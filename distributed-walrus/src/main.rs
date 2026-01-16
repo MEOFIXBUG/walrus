@@ -1,5 +1,6 @@
 // Binary wiring only: construct the bucket (Walrus IO), metadata (Raft state machine), controller
 // (routing), Kafka facade, monitor loop, and join/bootstrap helpers.
+mod auth;
 mod bucket;
 mod client;
 mod config;
@@ -7,6 +8,7 @@ mod controller;
 mod metadata;
 mod monitor;
 mod rpc;
+mod token;
 
 use bucket::Storage;
 use clap::Parser;
@@ -196,6 +198,9 @@ async fn start_node(node_config: NodeConfig) -> anyhow::Result<()> {
     bootstrap_node_one(&controller, &raft, has_existing_meta).await?;
     attempt_join(&raft, &node_config, &advertised_addr, join_target_resolved).await?;
 
+    // Initialize default admin user if no users exist
+    initialize_default_admin(&controller).await?;
+
     controller.update_leases().await;
     let sync_controller = controller.clone();
     tokio::spawn(async move {
@@ -343,5 +348,108 @@ async fn attempt_join(
     if !joined {
         error!("Failed to join cluster after retries");
     }
+    Ok(())
+}
+
+async fn initialize_default_admin(controller: &Arc<NodeController>) -> anyhow::Result<()> {
+    // Wait for metadata to be ready
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // Check if any users exist
+    if !controller.metadata.has_users() {
+        info!("====================================================================");
+        info!("No users found. Creating default users...");
+        info!("====================================================================");
+
+        // Read passwords from environment variables or use defaults
+        let admin_password = std::env::var("WALRUS_ADMIN_PASSWORD")
+            .unwrap_or_else(|_| "admin123".to_string());
+        let producer_password = std::env::var("WALRUS_PRODUCER_PASSWORD")
+            .unwrap_or_else(|_| "producer123".to_string());
+        let consumer_password = std::env::var("WALRUS_CONSUMER_PASSWORD")
+            .unwrap_or_else(|_| "consumer123".to_string());
+
+        // Warn if using default passwords
+        let using_defaults = !std::env::var("WALRUS_ADMIN_PASSWORD").is_ok();
+        if using_defaults {
+            info!("⚠️  WARNING: Using default passwords!");
+            info!("⚠️  For production, set environment variables:");
+            info!("    WALRUS_ADMIN_PASSWORD=<strong_password>");
+            info!("    WALRUS_PRODUCER_PASSWORD=<strong_password>");
+            info!("    WALRUS_CONSUMER_PASSWORD=<strong_password>");
+            info!("");
+        }
+
+        // Create admin user
+        match controller.add_admin_user("admin", &admin_password).await {
+            Ok(_) => {
+                info!("✓ Admin user created");
+                info!("  Username: admin");
+                if using_defaults {
+                    info!("  Password: {} (DEFAULT - CHANGE THIS!)", admin_password);
+                } else {
+                    info!("  Password: <from WALRUS_ADMIN_PASSWORD>");
+                }
+                info!("  Role: Admin (full access)");
+            }
+            Err(e) => {
+                error!("Failed to create default admin user: {}", e);
+                return Err(e);
+            }
+        }
+
+        // Create producer user
+        match controller.add_producer("producer1", &producer_password).await {
+            Ok(api_key) => {
+                info!("✓ Producer user created");
+                info!("  Username: producer1");
+                if using_defaults {
+                    info!("  Password: {} (DEFAULT)", producer_password);
+                } else {
+                    info!("  Password: <from WALRUS_PRODUCER_PASSWORD>");
+                }
+                info!("  Role: Producer (can publish messages)");
+                info!("  API_KEY: {}", api_key);
+            }
+            Err(e) => {
+                error!("Failed to create producer user: {}", e);
+            }
+        }
+
+        // Create consumer user
+        match controller.add_consumer("consumer1", &consumer_password).await {
+            Ok(api_key) => {
+                info!("✓ Consumer user created");
+                info!("  Username: consumer1");
+                if using_defaults {
+                    info!("  Password: {} (DEFAULT)", consumer_password);
+                } else {
+                    info!("  Password: <from WALRUS_CONSUMER_PASSWORD>");
+                }
+                info!("  Role: Consumer (can read messages)");
+                info!("  API_KEY: {}", api_key);
+            }
+            Err(e) => {
+                error!("Failed to create consumer user: {}", e);
+            }
+        }
+
+        info!("====================================================================");
+        info!("Usage:");
+        info!("  1. First time: LOGIN <username> <password>");
+        info!("     This returns your permanent API key");
+        info!("  2. Save the API key for long-term use");
+        info!("  3. Future connections: APIKEY <your_api_key>");
+        if using_defaults {
+            info!("");
+            info!("⚠️  SECURITY WARNING:");
+            info!("    Default passwords are in use. Set environment variables");
+            info!("    or change passwords immediately after first login!");
+        }
+        info!("====================================================================");
+    } else {
+        info!("Users already exist, skipping default user creation");
+    }
+
     Ok(())
 }
