@@ -6,6 +6,7 @@ mod config;
 mod controller;
 mod metadata;
 mod monitor;
+mod retention;
 mod rpc;
 
 use bucket::Storage;
@@ -152,8 +153,9 @@ async fn start_node(node_config: NodeConfig) -> anyhow::Result<()> {
 
     let client_addr = format!("{}:{}", node_config.client_host, node_config.client_port);
     let client_controller = controller.clone();
+    let client_config = node_config.clone();
     tokio::spawn(async move {
-        if let Err(e) = start_client_listener(client_controller, client_addr.clone()).await {
+        if let Err(e) = start_client_listener(client_controller, client_addr.clone(), client_config).await {
             error!("Client listener {} exited: {}", client_addr, e);
         }
     });
@@ -209,6 +211,29 @@ async fn start_node(node_config: NodeConfig) -> anyhow::Result<()> {
             .run()
             .await;
     });
+
+    // Start retention policy cleanup task if configured
+    if node_config.retention_hours > 0 || node_config.retention_entries > 0 {
+        let retention_controller = controller.clone();
+        let retention_metadata = metadata.clone();
+        let retention_hours = node_config.retention_hours;
+        let retention_entries = node_config.retention_entries;
+        let retention_data_dir = node_config.data_wal_dir();
+        tokio::spawn(async move {
+            retention::run_retention_cleanup(
+                retention_controller,
+                retention_metadata,
+                retention_hours,
+                retention_entries,
+                retention_data_dir,
+            )
+            .await;
+        });
+        info!(
+            "Retention policy enabled: {} hours, {} entries",
+            retention_hours, retention_entries
+        );
+    }
 
     info!("Node {} ready; waiting for ctrl-c", node_config.node_id);
     Ok(())

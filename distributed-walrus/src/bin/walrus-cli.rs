@@ -20,6 +20,10 @@ struct Args {
     #[arg(long, default_value = "127.0.0.1:9091")]
     addr: String,
 
+    /// API key for authentication (optional).
+    #[arg(long)]
+    api_key: Option<String>,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -52,8 +56,14 @@ async fn main() -> Result<()> {
         .try_init();
     let args = Args::parse();
     let addr = args.addr.clone();
-    let client = CliClient::new(addr.clone());
-    println!("→ connected target: {}", addr);
+    let client = if let Some(api_key) = &args.api_key {
+        println!("→ connected target: {} (with API key)", addr);
+        CliClient::with_api_key(addr.clone(), api_key.clone())
+    } else {
+        println!("→ connected target: {}", addr);
+        CliClient::new(addr.clone())
+    };
+    
     match args.command.unwrap_or(Command::Repl) {
         Command::Repl => run_repl(client).await?,
         Command::Register { topic } => client.register(&topic).await?,
@@ -70,7 +80,7 @@ async fn main() -> Result<()> {
 
 async fn run_repl(client: CliClient) -> Result<()> {
     print_banner();
-    println!("type commands (REGISTER/PUT/GET/STATE/METRICS). 'exit' or Ctrl+C to quit.");
+    println!("type commands (REGISTER/PUT/GET/STATE/METRICS/AUTH). 'exit' or Ctrl+C to quit.");
 
     let mut editor = Editor::<(), DefaultHistory>::new()?;
 

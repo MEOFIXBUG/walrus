@@ -1,4 +1,5 @@
 use crate::controller::NodeController;
+use crate::config::NodeConfig;
 use anyhow::{anyhow, Result};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -10,22 +11,30 @@ const MAX_FRAME_LEN: usize = 64 * 1024;
 pub async fn start_client_listener(
     controller: Arc<NodeController>,
     bind_addr: String,
+    config: NodeConfig,
 ) -> Result<()> {
     let listener = TcpListener::bind(&bind_addr).await?;
     info!("Client listener bound on {}", bind_addr);
 
+    let api_key = config.api_key.clone();
     loop {
         let (socket, addr) = listener.accept().await?;
         let controller_clone = controller.clone();
+        let api_key_clone = api_key.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(socket, controller_clone).await {
+            if let Err(e) = handle_connection(socket, controller_clone, api_key_clone).await {
                 warn!("Client connection {} closed with error: {}", addr, e);
             }
         });
     }
 }
 
-async fn handle_connection(mut socket: TcpStream, controller: Arc<NodeController>) -> Result<()> {
+async fn handle_connection(
+    mut socket: TcpStream,
+    controller: Arc<NodeController>,
+    api_key: Option<String>,
+) -> Result<()> {
+    let mut authenticated = api_key.is_none(); // If no API key required, consider authenticated
     loop {
         let mut len_buf = [0u8; 4];
         if let Err(e) = socket.read_exact(&mut len_buf).await {
@@ -52,7 +61,7 @@ async fn handle_connection(mut socket: TcpStream, controller: Arc<NodeController
             }
         };
 
-        let response = match handle_command(text.trim_end(), controller.clone()).await {
+        let response = match handle_command(text.trim_end(), controller.clone(), &api_key, &mut authenticated).await {
             Ok(msg) => msg,
             Err(e) => format!("ERR {}", e),
         };
@@ -61,11 +70,41 @@ async fn handle_connection(mut socket: TcpStream, controller: Arc<NodeController
     }
 }
 
-async fn handle_command(line: &str, controller: Arc<NodeController>) -> Result<String> {
+async fn handle_command(
+    line: &str,
+    controller: Arc<NodeController>,
+    api_key: &Option<String>,
+    authenticated: &mut bool,
+) -> Result<String> {
     let mut parts = line.splitn(3, ' ');
     let Some(op) = parts.next() else {
         return Err(anyhow!("empty command"));
     };
+
+    // Handle AUTH command separately (for authentication)
+    if op == "AUTH" {
+        let provided_key = parts.next().unwrap_or("");
+        if let Some(expected_key) = api_key {
+            if provided_key == expected_key {
+                *authenticated = true;
+                return Ok("OK".into());
+            } else {
+                return Err(anyhow!("invalid API key"));
+            }
+        } else {
+            // No API key configured, accept any AUTH
+            *authenticated = true;
+            return Ok("OK".into());
+        }
+    }
+
+    // Check authentication for other commands if API key is required
+    if let Some(_) = api_key {
+        if !*authenticated {
+            return Err(anyhow!("authentication required: send AUTH <api_key> first"));
+        }
+    }
+
     tracing::info!("client command received: {}", line);
 
     match op {

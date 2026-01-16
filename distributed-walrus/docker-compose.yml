@@ -21,6 +21,12 @@ services:
       - "0.0.0.0"
       - "--client-port"
       - "9091"
+      - "--api-key"
+      - "walrus-secret-key-123"
+      - "--retention-hours"
+      - "168"
+      - "--retention-entries"
+      - "0"
     environment:
       - RUST_LOG=debug
       - WALRUS_DISABLE_IO_URING=1
@@ -61,6 +67,12 @@ services:
       - "9092"
       - "--join"
       - "node1:6001"
+      - "--api-key"
+      - "walrus-secret-key-123"
+      - "--retention-hours"
+      - "168"
+      - "--retention-entries"
+      - "0"
     environment:
       - RUST_LOG=debug
       - WALRUS_DISABLE_IO_URING=1
@@ -101,6 +113,12 @@ services:
       - "9093"
       - "--join"
       - "node1:6001"
+      - "--api-key"
+      - "walrus-secret-key-123"
+      - "--retention-hours"
+      - "168"
+      - "--retention-entries"
+      - "0"
     environment:
       - RUST_LOG=debug
       - WALRUS_DISABLE_IO_URING=1

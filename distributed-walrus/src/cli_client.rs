@@ -5,11 +5,22 @@ use tokio::net::TcpStream;
 #[derive(Clone)]
 pub struct CliClient {
     addr: String,
+    api_key: Option<String>,
 }
 
 impl CliClient {
     pub fn new(addr: impl Into<String>) -> Self {
-        Self { addr: addr.into() }
+        Self {
+            addr: addr.into(),
+            api_key: None,
+        }
+    }
+
+    pub fn with_api_key(addr: impl Into<String>, api_key: impl Into<String>) -> Self {
+        Self {
+            addr: addr.into(),
+            api_key: Some(api_key.into()),
+        }
     }
 
     pub async fn register(&self, topic: &str) -> Result<()> {
@@ -44,6 +55,35 @@ impl CliClient {
         let mut stream = TcpStream::connect(&self.addr)
             .await
             .with_context(|| format!("connect to {}", self.addr))?;
+        
+        // Authenticate if API key is set and this is not already an AUTH command
+        if let Some(api_key) = &self.api_key {
+            if !line.starts_with("AUTH ") {
+                // Send AUTH command first
+                let auth_cmd = format!("AUTH {}", api_key);
+                let auth_bytes = auth_cmd.as_bytes();
+                let auth_len = auth_bytes.len() as u32;
+                stream
+                    .write_all(&auth_len.to_le_bytes())
+                    .await
+                    .context("write auth length")?;
+                stream.write_all(auth_bytes).await.context("write auth payload")?;
+
+                let mut auth_len_buf = [0u8; 4];
+                stream
+                    .read_exact(&mut auth_len_buf)
+                    .await
+                    .context("read auth length")?;
+                let auth_resp_len = u32::from_le_bytes(auth_len_buf) as usize;
+                let mut auth_buf = vec![0u8; auth_resp_len];
+                stream.read_exact(&mut auth_buf).await.context("read auth payload")?;
+                let auth_resp = String::from_utf8(auth_buf).context("utf-8 decode auth")?;
+                if auth_resp != "OK" {
+                    return Err(anyhow::anyhow!("Authentication failed: {}", auth_resp));
+                }
+            }
+        }
+        
         let bytes = line.as_bytes();
         let len = bytes.len() as u32;
         stream

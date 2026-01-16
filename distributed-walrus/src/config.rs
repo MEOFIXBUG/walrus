@@ -43,6 +43,20 @@ pub struct NodeConfig {
     /// Host/interface to bind the client listener on.
     #[arg(long = "client-host", default_value = "127.0.0.1")]
     pub client_host: String,
+
+    /// API key for client authentication (optional). If set, all client requests must include this key.
+    #[arg(long = "api-key")]
+    pub api_key: Option<String>,
+
+    /// Retention policy: maximum age in hours for segments (default: 168 = 7 days).
+    /// Segments older than this will be deleted.
+    #[arg(long = "retention-hours", default_value = "168")]
+    pub retention_hours: u64,
+
+    /// Retention policy: maximum number of entries to keep per topic (default: unlimited = 0).
+    /// If set, older segments will be deleted when this limit is exceeded.
+    #[arg(long = "retention-entries", default_value = "0")]
+    pub retention_entries: u64,
 }
 
 impl NodeConfig {
