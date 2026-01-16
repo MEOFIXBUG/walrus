@@ -7,6 +7,7 @@ mod config;
 mod controller;
 mod metadata;
 mod monitor;
+mod retention;
 mod rpc;
 mod token;
 

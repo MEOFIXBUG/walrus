@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use crate::auth::{AuthManager, User};
+use crate::retention::RetentionPolicy;
 
 pub type NodeId = u64;
 pub type TopicName = String;
@@ -32,6 +33,13 @@ pub struct TopicState {
     /// Map segment id -> leader responsible for that segment
     #[serde(default)]
     pub segment_leaders: HashMap<u64, NodeId>,
+    /// Retention policy for this topic (how long to keep data)
+    #[serde(default)]
+    pub retention: RetentionPolicy,
+    /// Timestamp when each segment was created (for time-based retention)
+    /// Map segment id -> creation timestamp (seconds since UNIX_EPOCH)
+    #[serde(default)]
+    pub segment_created_at: HashMap<u64, u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,6 +62,14 @@ pub enum MetadataCmd {
     },
     RemoveUser {
         username: String,
+    },
+    SetRetention {
+        topic: String,
+        policy: RetentionPolicy,
+    },
+    DeleteSegments {
+        topic: String,
+        segment_ids: Vec<u64>,
     },
 }
 
@@ -167,14 +183,22 @@ impl StateMachineTrait for Metadata {
                     return Ok(Bytes::from_static(b"EXISTS"));
                 }
 
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+
                 let mut topic = TopicState {
                     current_segment: 1,
                     leader_node: initial_leader,
                     last_sealed_entry_offset: 0,
                     sealed_segments: HashMap::new(),
                     segment_leaders: HashMap::new(),
+                    retention: RetentionPolicy::default(),
+                    segment_created_at: HashMap::new(),
                 };
                 topic.segment_leaders.insert(1, initial_leader);
+                topic.segment_created_at.insert(1, now); // Record creation time
                 state.topics.insert(name, topic);
                 Ok(Bytes::from_static(b"CREATED"))
             }
@@ -197,6 +221,14 @@ impl StateMachineTrait for Metadata {
                     topic_state
                         .segment_leaders
                         .insert(topic_state.current_segment, new_leader);
+
+                    // Record creation timestamp for the new segment
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    topic_state.segment_created_at.insert(topic_state.current_segment, now);
+
                     return Ok(Bytes::from_static(b"ROLLED"));
                 }
                 Err("Topic not found".into())
@@ -218,6 +250,26 @@ impl StateMachineTrait for Metadata {
                     .remove_user(&username)
                     .map(|_| Bytes::from_static(b"USER_REMOVED"))
                     .map_err(|e| e.to_string())
+            }
+            MetadataCmd::SetRetention { topic, policy } => {
+                if let Some(topic_state) = state.topics.get_mut(&topic) {
+                    topic_state.retention = policy;
+                    Ok(Bytes::from_static(b"RETENTION_SET"))
+                } else {
+                    Err("Topic not found".into())
+                }
+            }
+            MetadataCmd::DeleteSegments { topic, segment_ids } => {
+                if let Some(topic_state) = state.topics.get_mut(&topic) {
+                    for seg_id in segment_ids {
+                        topic_state.sealed_segments.remove(&seg_id);
+                        topic_state.segment_leaders.remove(&seg_id);
+                        topic_state.segment_created_at.remove(&seg_id);
+                    }
+                    Ok(Bytes::from_static(b"SEGMENTS_DELETED"))
+                } else {
+                    Err("Topic not found".into())
+                }
             }
         }
     }
