@@ -57,6 +57,11 @@ pub struct NodeConfig {
     /// If set, older segments will be deleted when this limit is exceeded.
     #[arg(long = "retention-entries", default_value = "0")]
     pub retention_entries: u64,
+
+    /// Maximum frame length in bytes for client commands (default: 4 MB = 4194304).
+    /// Messages exceeding this limit will be rejected.
+    #[arg(long = "max-frame-length", default_value = "4194304")]
+    pub max_frame_length: usize,
 }
 
 impl NodeConfig {

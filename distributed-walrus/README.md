@@ -266,6 +266,10 @@ See [docs/cli.md](docs/cli.md) for detailed CLI usage.
 | `--client-port` | `8080` | Client TCP port |
 | `--client-host` | `127.0.0.1` | Client bind address |
 | `--join` | - | Address of existing node to join |
+| `--api-key` | - | Optional API key for authentication |
+| `--retention-hours` | `168` | Max age of segments in hours (7 days) |
+| `--retention-entries` | `0` | Max entries per topic (0 = unlimited) |
+| `--max-frame-length` | `4194304` | Max message size in bytes (4 MB) |
 
 ### Environment Variables
 

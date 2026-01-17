@@ -78,6 +78,23 @@ Success replies are `OK` or `OK <payload>`. `GET` returns `EMPTY` when no data i
 
 ### Message Size Limit
 
-The maximum frame length is **4 MB (4,194,304 bytes)**. Commands exceeding this limit will receive an error response `ERR invalid frame length`.
+The maximum frame length is **4 MB (4,194,304 bytes)** by default. Commands exceeding this limit will receive an error response `ERR invalid frame length`.
 
-To change this limit, modify `MAX_FRAME_LEN` in `distributed-walrus/src/client.rs` and rebuild the server.*** End Patch
+#### Configuring the Limit
+
+You can configure the limit when starting the Walrus node:
+
+```bash
+# Start with 10 MB limit
+./walrus-node --max-frame-length 10485760
+
+# Or via environment (clap supports this)
+MAX_FRAME_LENGTH=10485760 ./walrus-node
+```
+
+Common sizes:
+- 1 MB: `1048576`
+- 4 MB: `4194304` (default)
+- 10 MB: `10485760`
+- 16 MB: `16777216`
+- 50 MB: `52428800`*** End Patch

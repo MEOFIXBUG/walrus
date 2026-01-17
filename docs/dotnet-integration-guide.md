@@ -428,7 +428,7 @@ public async Task IntegrationTest_WriteAndRead()
 ## Giới Hạn Message
 
 Walrus có giới hạn kích thước message tối đa:
-- **Giới hạn hiện tại**: 4 MB (4,194,304 bytes)
+- **Giới hạn mặc định**: 4 MB (4,194,304 bytes)
 - **Giới hạn trước đây**: 64 KB (65,536 bytes)
 
 Nếu bạn gửi message vượt quá giới hạn này, sẽ nhận được lỗi:
@@ -436,10 +436,34 @@ Nếu bạn gửi message vượt quá giới hạn này, sẽ nhận được l
 WalrusCommandException: Invalid command length: [size]
 ```
 
-**Giải pháp**:
+### Cách Tăng Giới Hạn
+
+**Option 1: Sử dụng command-line argument** (khuyến nghị):
+```bash
+# Tăng lên 10 MB
+./walrus-node --max-frame-length 10485760
+
+# Hoặc với docker
+docker run -d \
+  --max-frame-length 10485760 \
+  walrus:latest
+```
+
+**Option 2: Sử dụng environment variable**:
+```bash
+# Linux/Mac
+export MAX_FRAME_LENGTH=10485760
+./walrus-node
+
+# Docker
+docker run -d \
+  -e MAX_FRAME_LENGTH=10485760 \
+  walrus:latest
+```
+
+**Giải pháp khác**:
 - Chia nhỏ message thành nhiều phần nhỏ hơn
 - Nén dữ liệu trước khi gửi
-- Nếu cần tăng giới hạn, chỉnh sửa `MAX_FRAME_LEN` trong `distributed-walrus/src/client.rs` và rebuild server
 
 ## Troubleshooting
 

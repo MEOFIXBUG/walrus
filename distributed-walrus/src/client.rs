@@ -6,8 +6,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{info, warn};
 
-const MAX_FRAME_LEN: usize = 4 * 1024 * 1024; // 4 MB
-
 pub async fn start_client_listener(
     controller: Arc<NodeController>,
     bind_addr: String,
@@ -17,12 +15,13 @@ pub async fn start_client_listener(
     info!("Client listener bound on {}", bind_addr);
 
     let api_key = config.api_key.clone();
+    let max_frame_len = config.max_frame_length;
     loop {
         let (socket, addr) = listener.accept().await?;
         let controller_clone = controller.clone();
         let api_key_clone = api_key.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(socket, controller_clone, api_key_clone).await {
+            if let Err(e) = handle_connection(socket, controller_clone, api_key_clone, max_frame_len).await {
                 warn!("Client connection {} closed with error: {}", addr, e);
             }
         });
@@ -33,6 +32,7 @@ async fn handle_connection(
     mut socket: TcpStream,
     controller: Arc<NodeController>,
     api_key: Option<String>,
+    max_frame_len: usize,
 ) -> Result<()> {
     let mut authenticated = api_key.is_none(); // If no API key required, consider authenticated
     loop {
@@ -46,7 +46,7 @@ async fn handle_connection(
         }
 
         let frame_len = u32::from_le_bytes(len_buf) as usize;
-        if frame_len == 0 || frame_len > MAX_FRAME_LEN {
+        if frame_len == 0 || frame_len > max_frame_len {
             send_response(&mut socket, "ERR invalid frame length").await?;
             continue;
         }
