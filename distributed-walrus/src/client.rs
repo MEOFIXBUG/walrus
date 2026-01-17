@@ -6,7 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{info, warn};
 
-const MAX_FRAME_LEN: usize = 64 * 1024;
+const MAX_FRAME_LEN: usize = 4 * 1024 * 1024; // 4 MB
 
 pub async fn start_client_listener(
     controller: Arc<NodeController>,

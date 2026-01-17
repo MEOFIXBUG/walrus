@@ -425,6 +425,22 @@ public async Task IntegrationTest_WriteAndRead()
 3. **Connection Timeout**: Điều chỉnh timeout phù hợp với network latency
 4. **Async Everywhere**: Luôn sử dụng async/await, không block threads
 
+## Giới Hạn Message
+
+Walrus có giới hạn kích thước message tối đa:
+- **Giới hạn hiện tại**: 4 MB (4,194,304 bytes)
+- **Giới hạn trước đây**: 64 KB (65,536 bytes)
+
+Nếu bạn gửi message vượt quá giới hạn này, sẽ nhận được lỗi:
+```
+WalrusCommandException: Invalid command length: [size]
+```
+
+**Giải pháp**:
+- Chia nhỏ message thành nhiều phần nhỏ hơn
+- Nén dữ liệu trước khi gửi
+- Nếu cần tăng giới hạn, chỉnh sửa `MAX_FRAME_LEN` trong `distributed-walrus/src/client.rs` và rebuild server
+
 ## Troubleshooting
 
 ### Connection Timeout
@@ -438,6 +454,7 @@ public async Task IntegrationTest_WriteAndRead()
 - Kiểm tra topic đã được đăng ký chưa
 - Kiểm tra format của command
 - Xem logs của Walrus server
+- **Lỗi "Invalid command length"**: Message vượt quá 4 MB, cần chia nhỏ hoặc tăng `MAX_FRAME_LEN`
 
 ### Performance Issues
 

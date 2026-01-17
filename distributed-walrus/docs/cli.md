@@ -64,7 +64,7 @@ cargo run --bin walrus-cli --manifest-path distributed-walrus/Cargo.toml -- metr
 
 ## Protocol Notes
 
-Commands speak the simple length-prefixed text protocol exposed by the node’s TCP listener:
+Commands speak the simple length-prefixed text protocol exposed by the node's TCP listener:
 
 ```
 REGISTER <topic>
@@ -74,4 +74,10 @@ STATE <topic>
 METRICS
 ```
 
-Success replies are `OK` or `OK <payload>`. `GET` returns `EMPTY` when no data is available. Errors are returned as `ERR ...` and surfaced by the CLI with a non-zero exit.*** End Patch
+Success replies are `OK` or `OK <payload>`. `GET` returns `EMPTY` when no data is available. Errors are returned as `ERR ...` and surfaced by the CLI with a non-zero exit.
+
+### Message Size Limit
+
+The maximum frame length is **4 MB (4,194,304 bytes)**. Commands exceeding this limit will receive an error response `ERR invalid frame length`.
+
+To change this limit, modify `MAX_FRAME_LEN` in `distributed-walrus/src/client.rs` and rebuild the server.*** End Patch
